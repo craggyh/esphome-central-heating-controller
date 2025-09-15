@@ -208,11 +208,9 @@ sensor:
                     - binary_sensor.is_on: stove_boiler_stat
                   then:
                     - switch.turn_off: zone4
-                    - switch.turn_off: zone4_aoife
                     - switch.turn_on: relay1
                   else:
                     - switch.turn_off: zone4
-                    - switch.turn_off: zone4_aoife
 
 ### Stove Boiler Automation
   - platform: template
@@ -233,7 +231,6 @@ sensor:
                   - lambda: 'return id(water_store_top_temp).state > 60;'
               then:
                 - switch.turn_off: zone4
-                - switch.turn_off: zone4_aoife
                 - switch.turn_on: relay1
               else: 
                 if:
@@ -578,38 +575,6 @@ switch:
             else:
               - switch.turn_off: call_for_heat
 
-# Zone 4  (Hot Water Aoife)
-  - platform: template
-    name: "Hot Water (Aoife)"
-    optimistic: true
-    icon: "mdi:shower"
-    id: zone4_aoife
-    turn_on_action:
-      - switch.turn_on: call_for_heat
-      - switch.turn_on: relay4   
-      - number.set: 
-          id: setpoint_max
-          value: 62
-               
-    turn_off_action:
-      then:
-        - switch.turn_off: relay4
-        - if:
-            condition:
-              or:
-                - switch.is_on: zone1
-                - switch.is_on: zone2
-                - switch.is_on: zone3
-            then:
-              - number.set: 
-                  id: setpoint_max
-                  value: 60
-            else:
-              - switch.turn_off: call_for_heat
-              - number.set: 
-                  id: setpoint_max
-                  value: 60
-                  
 ### Binary Sensore and Digital Inputs    
 binary_sensor:     
   - platform: template
