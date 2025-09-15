@@ -1,0 +1,744 @@
+esphome:
+  name: central-heating
+ # on_boot: 
+# - switch.turn_on: relay8
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: github://nrandell/dallasng
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  platform: esphome 
+
+web_server:
+  port: 80
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  #reboot_timeout: 0s
+  #manual_ip:
+  #  static_ip: 10.10.50.10
+  #  gateway: 10.10.50.254
+   # subnet: 255.255.255.0  
+  
+i2c:
+  sda: 4
+  scl: 5
+  scan: true
+  id: bus_a
+    
+# Example configuration entry
+#ethernet:
+ # type: LAN8720
+ # mdc_pin: GPIO23
+ # mdio_pin: GPIO18
+ # clk_mode: GPIO17_OUT
+  #phy_addr: 0
+#  manual_ip:
+  ##  static_ip: 10.10.50.52
+ #   gateway: 10.10.50.254
+  #  subnet: 255.255.255.0  
+  #  dns1: 10.10.50.3
+#    dns2: 10.10.50.254
+
+### pcf8574 Hubs
+pcf8574:
+  - id: 'pcf8574_hub_output'
+    address: 0x24
+  - id: 'pcf8574_hub_input'
+    address: 0x22
+
+### Input Numbers
+number:
+  - platform: template
+    name: "Hot Water Min"
+    id: setpoint_min
+    optimistic: true
+    restore_value: True
+    initial_value: 38
+    min_value: 30
+    max_value: 55
+    step: 1
+  - platform: template
+    name: "Hot Water Max"
+    id: setpoint_max
+    optimistic: true
+    restore_value: True
+    initial_value: 60
+    min_value: 50
+    max_value: 65
+    step: 1
+  - platform: template
+    name: "Stove Boiler Max"
+    id: stove_max
+    optimistic: true
+    restore_value: True
+    initial_value: 55
+    min_value: 50
+    max_value: 65
+    step: 1
+
+### Text sensors with general information
+text_sensor:
+  - platform: template
+    name: Central Heating Uptime
+    id: central_heating_uptime
+    icon: mdi:clock-start
+
+### Dallas Hubs
+dallasng:
+  - id: "dallas_downstairs"
+    pin: 
+      number: GPIO14 
+    update_interval: 30s
+
+  - id: "dallas_upstairs"
+    pin: GPIO33
+    update_interval: 15s
+
+  - id: "dallas_boiler"
+    pin: 
+      number: GPIO32
+    update_interval: 30s
+
+  - id: "dallas_stove"
+    pin: 
+      number: GPIO13
+    update_interval: 15s
+
+### Sensors 
+sensor:
+### Dallas Temp Sensors
+  - platform: dallasng
+    address: 0xFC021841334CFF28
+    name: "Stove Boiler Temp"
+    dallasng_id: "dallas_stove"
+    id: "stove_boiler_temp"
+    resolution: 12
+
+  - platform: dallasng
+    address: 0x2701191eea752428
+    name: "Stove Boiler Return"
+    dallasng_id: "dallas_stove"
+    id: "stove_boiler_return"
+    resolution: 12
+          
+  - platform: dallasng
+    address: 0x770114550f43aa28
+    name: "Zone 1 Flow"
+    dallasng_id: "dallas_boiler"
+    resolution: 10
+
+  - platform: dallasng
+    address: 0xfc00000d9ec23d28
+    name: "Zone 2 Flow"
+    dallasng_id: "dallas_upstairs"
+    resolution: 10
+
+  - platform: dallasng
+    address: 0xEE0114551F81AA28
+    name: "Oil Boiler Return"
+    id: oil_boiler_return
+    dallasng_id: "dallas_boiler"
+    resolution: 10
+
+  - platform: dallasng
+    address: 0xbb0114552356aa28
+    resolution: 10
+    name: "Oil Boiler Flow"
+    id: oil_boiler_flow
+    dallasng_id: "dallas_downstairs"
+
+  - platform: dallasng
+    address: 0x880114551897aa28
+    resolution: 10
+    name: "Zone 1 Return"
+    dallasng_id: "dallas_downstairs"
+
+  - platform: dallasng
+    address: 0x6400000d9d8a7b28
+    resolution: 10
+    name: "Zone 2 Return"
+    dallasng_id: "dallas_upstairs"
+
+  - platform: dallasng
+    address: 0xbd00000d9ea69328
+    name: "Hot Water Temp"
+    dallasng_id: "dallas_upstairs"
+    id: hot_water_temp
+    resolution: 10
+
+### Solar Panel Water Temp
+  - platform: homeassistant
+    name: "Water Store Top Temp"
+    entity_id: sensor.solar_panels_water_store_top_temp
+    id: water_store_top_temp
+
+### Hot Water Automation
+  - platform: template
+    name: hot_water_automation
+    internal: true
+    lambda: 'return id(hot_water_temp).state;'
+    update_interval: 10s
+    on_value:
+      then:
+        if:
+          condition: 
+            - lambda: 'return x < id(setpoint_min).state;'
+          then: 
+            - switch.turn_on: zone4
+          else:
+            if:
+              condition: 
+                  - lambda: 'return x > id(setpoint_max).state;'
+              then: 
+                if:
+                  condition:
+                    - binary_sensor.is_on: stove_boiler_stat
+                  then:
+                    - switch.turn_off: zone4
+                    - switch.turn_off: zone4_aoife
+                    - switch.turn_on: relay1
+                  else:
+                    - switch.turn_off: zone4
+                    - switch.turn_off: zone4_aoife
+
+### Stove Boiler Automation
+  - platform: template
+    name: stove_boiler_automation
+    internal: true
+    lambda: 'return id(stove_boiler_temp).state;'
+    update_interval: 10s
+    on_value:
+      then:
+        if:
+          condition:
+            - binary_sensor.is_on: stove_boiler_stat
+          then:
+            if:
+              condition:    
+                - or:
+                  - lambda: 'return id(hot_water_temp).state > 55;'
+                  - lambda: 'return id(water_store_top_temp).state > 60;'
+              then:
+                - switch.turn_off: zone4
+                - switch.turn_off: zone4_aoife
+                - switch.turn_on: relay1
+              else: 
+                if:
+                  condition:
+                    switch.is_on: zone1
+                  then:
+                    - switch.turn_on: relay4                    
+                  else:
+                    - switch.turn_off: relay1
+                    - switch.turn_on: relay4
+    on_value_range: 
+      - above: 75
+        then: 
+          - switch.turn_on: relay1
+          - switch.turn_on: relay2
+      - above: 80
+        then: 
+          - switch.turn_on: relay1
+          - switch.turn_on: relay2     
+          - switch.turn_on: relay4                   
+
+### Oil Boiler Temperature Delta
+  - platform: template
+    id: oil_boiler_delta
+    name: Oil Boiler Delta
+    unit_of_measurement: °C
+    update_interval: 10s
+    lambda: return id(oil_boiler_flow).state - id(oil_boiler_return).state;
+
+### Stove Boiler Temperature Delta
+  - platform: template
+    id: stove_boiler_delta
+    name: Stove Boiler Delta
+    unit_of_measurement: °C
+    update_interval: 10s
+    lambda: return id(stove_boiler_temp).state - id(stove_boiler_return).state;
+
+### System Pressure
+  - platform: template
+    id: pressure_psi
+    name: Central Heating Pressure Psi
+    unit_of_measurement: Psi
+    lambda: return id(pressure).state ;
+
+  - platform: template
+    id: pressure_bar
+    name: Central Heating Pressure Bar
+    unit_of_measurement: Bar
+    update_interval: 3s
+    filters:
+      - multiply: 0.0689
+    lambda: return id(pressure).state ;
+
+### Uptime Sensor
+  - platform: uptime
+    name: Uptime Sensor
+    id: uptime_sensor
+    update_interval: 60s
+    internal: true
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: central_heating_uptime
+            state: !lambda |-
+              int seconds = round(id(uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? String(days) + "d " : "") +
+                (hours ? String(hours) + "h " : "") +
+                (minutes ? String(minutes) + "m " : "") +
+                (String(seconds) + "s")
+              ).c_str();
+
+### Analog Inputs                      
+  - platform: adc
+    pin: GPIO34
+    id: pressure
+    name: Central Heating Pressure
+    update_interval: 60s
+#    unit_of_measurement: "PSI"
+ # unit_of_measurement: "bar"
+    accuracy_decimals: 2
+    attenuation: 6db
+    filters:
+      - calibrate_linear:
+        - 0.45 -> 0.0
+      #  - 1.8 -> 29.0
+        - 2.5 -> 80
+     #   - 2.35 -> 43.5
+
+ #     - offset: -0.25 # Calibration
+  #    - lambda: return ((x * 5.00) / 1024.00) * 40.00 ;
+
+#  - platform: adc
+#    pin: GPIO35
+#    name: "Analog-IN2"
+#    update_interval: 60s
+#    attenuation: 11db
+### End of Sensors ###
+
+### Switches and Relays
+switch:
+  - platform: restart
+    name: "Central Heating Restart"
+
+### Dallas failure action
+  - platform: template
+    name: "Dallas Failure Restart Switch"
+    id: dallas_failure_restart
+    optimistic: True
+
+### Individual Relay outputs
+# Zone 1 relay (Downstairs)
+  - platform: gpio
+    name: "Zone 1 Relay"
+    id: relay1
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 0
+      mode: OUTPUT
+      inverted: true
+    on_turn_off:
+      then:
+       - if:
+          condition:
+            binary_sensor.is_on: stove_boiler_stat
+          then:
+            - switch.turn_on: relay4
+          else:
+
+# Zone 2 relay (Upstairs) 
+  - platform: gpio
+    name: "Zone 2 Relay"
+    id: relay2
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 1
+      mode: OUTPUT
+      inverted: true
+    on_turn_off:
+      then:
+       - if:
+          condition:
+            binary_sensor.is_on: stove_boiler_stat
+          then:
+            - switch.turn_on: relay1
+          else:
+
+# Zone 3 relay (Top Floor)     
+  - platform: gpio
+    name: "Zone 3 Relay"
+    id: relay3
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 2
+      mode: OUTPUT
+      inverted: true
+
+# Zone 4 relay (Hot Water)     
+  - platform: gpio
+    name: "Hot Water Relay"
+    id: relay4
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 3
+      mode: OUTPUT
+      inverted: true
+    on_turn_off:
+      then:
+       - if:
+          condition:
+            binary_sensor.is_on: stove_boiler_stat
+          then:
+            - switch.turn_on: relay1
+          else: 
+
+# Oil Boiler relay    
+  - platform: gpio
+    name: "Oil Boiler Relay"
+    id: boiler_relay
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 4
+      mode: OUTPUT
+      inverted: true
+
+# Stove Boiler relay (Circulation Pump)     
+  - platform: gpio
+    name: "Stove Boiler Relay"
+    id: stove_relay
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 5
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    name: "switch7"
+    id: switch7
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 6
+      mode: OUTPUT
+      inverted: true
+  
+  - platform: gpio
+    name: "Hot Water Stat"
+    id: relay8
+    pin:
+      pcf8574: pcf8574_hub_output
+      number: 7
+      mode: OUTPUT
+      inverted: true
+
+# Call for Heat
+  - platform: template
+    name: "Call for Heat"
+    icon: "mdi:radiator-disabled"
+    id: call_for_heat
+    optimistic: true
+#    restore_state: true
+    turn_on_action:
+      then:
+       - binary_sensor.template.publish:
+           id: call_for_heat_sensor
+           state: "ON"
+       - if:
+          condition:
+            binary_sensor.is_on: stove_boiler_stat
+          then:
+            - switch.turn_off: boiler_relay
+            - switch.turn_on: stove_relay
+          else: 
+            - switch.turn_off: stove_relay
+            - switch.turn_on: boiler_relay
+    turn_off_action:
+      then:
+       - binary_sensor.template.publish:
+           id: call_for_heat_sensor
+           state: OFF
+       - if:
+          condition:
+            binary_sensor.is_on: stove_boiler_stat
+          then:
+            - switch.turn_off: boiler_relay
+            - switch.turn_on: stove_relay
+          else: 
+            - switch.turn_off: boiler_relay
+            - switch.turn_off: stove_relay
+        
+# Zone 1 Heating (Downstairs)
+  - platform: template
+    name: "Zone 1"
+    icon: "mdi:radiator-disabled"
+    id: zone1
+    optimistic: true
+ #   restore_state: no
+    turn_on_action:
+      - switch.turn_on: call_for_heat
+      - switch.turn_on: relay1      
+    turn_off_action:
+      then:
+        - switch.turn_off: relay1 
+        - if:
+            condition:
+              or:
+                - switch.is_on: zone2
+                - switch.is_on: zone3
+                - switch.is_on: zone4
+            then:
+            else:
+              - switch.turn_off: call_for_heat 
+          
+# Zone 2 Heating (Upstairs)
+  - platform: template
+    name: "Zone 2"
+    icon: "mdi:radiator-disabled"
+    id: zone2
+    optimistic: true
+    turn_on_action:
+      - switch.turn_on: call_for_heat
+      - switch.turn_on: relay2      
+    turn_off_action:
+      then:
+        - switch.turn_off: relay2
+        - if:
+            condition:
+              or:
+                - switch.is_on: zone1
+                - switch.is_on: zone3
+                - switch.is_on: zone4
+            then:
+            else:
+              - switch.turn_off: call_for_heat 
+           
+# Zone 3 Heating (Top Floor)
+  - platform: template
+    name: "Zone 3"
+    icon: "mdi:radiator-disabled"
+    id: zone3
+    optimistic: true
+    turn_on_action:
+      - switch.turn_on: call_for_heat
+      - switch.turn_on: relay3     
+    turn_off_action:
+      then:
+        - switch.turn_off: relay3
+        - if:
+            condition:
+              or:
+                - switch.is_on: zone1
+                - switch.is_on: zone2
+                - switch.is_on: zone4
+            then:
+            else:
+              - switch.turn_off: call_for_heat 
+    
+# Zone 4  (Hot Water)
+  - platform: template
+    name: "Hot Water"
+    optimistic: true
+    icon: "mdi:shower"
+    id: zone4
+    turn_on_action:
+      - switch.turn_on: call_for_heat
+      - switch.turn_on: relay4      
+    turn_off_action:
+      then:
+        - switch.turn_off: relay4
+        - if:
+            condition:
+              or:
+                - switch.is_on: zone1
+                - switch.is_on: zone2
+                - switch.is_on: zone3
+            then:
+            else:
+              - switch.turn_off: call_for_heat
+
+# Zone 4  (Hot Water Aoife)
+  - platform: template
+    name: "Hot Water (Aoife)"
+    optimistic: true
+    icon: "mdi:shower"
+    id: zone4_aoife
+    turn_on_action:
+      - switch.turn_on: call_for_heat
+      - switch.turn_on: relay4   
+      - number.set: 
+          id: setpoint_max
+          value: 62
+               
+    turn_off_action:
+      then:
+        - switch.turn_off: relay4
+        - if:
+            condition:
+              or:
+                - switch.is_on: zone1
+                - switch.is_on: zone2
+                - switch.is_on: zone3
+            then:
+              - number.set: 
+                  id: setpoint_max
+                  value: 60
+            else:
+              - switch.turn_off: call_for_heat
+              - number.set: 
+                  id: setpoint_max
+                  value: 60
+                  
+### Binary Sensore and Digital Inputs    
+binary_sensor:     
+  - platform: template
+    name: "Dallas Hub Alert"
+    lambda: 'return ((App.get_app_state() & STATUS_LED_WARNING) != 0u);'
+    on_press:
+        then:
+          if:
+            condition:
+              switch.is_on: dallas_failure_restart
+            then:
+              - switch.turn_off: relay8
+              - delay: 5s
+              - switch.turn_on: relay8
+
+  - platform: status
+    name: Central Heating Status
+
+  - platform: template
+    name: "Call For Heat"
+    id: call_for_heat_sensor
+
+  - platform: gpio
+    name: "Stove Stat"
+    pin: 
+      pcf8574: pcf8574_hub_input
+      number: 7
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 150ms
+    id: stove_boiler_stat
+    on_press:
+        then:
+          if:
+            condition:
+              or:
+              - lambda: 'return id(hot_water_temp).state > 55;'
+              - lambda: 'return id(water_store_top_temp).state > 60;'
+            then:
+              - switch.turn_off: relay4
+              - switch.turn_off: boiler_relay
+              - switch.turn_on: stove_relay
+              - switch.turn_on: relay1
+            else: 
+              - switch.turn_off: boiler_relay              
+              - switch.turn_on: stove_relay
+              - switch.turn_on: relay4
+    on_release:
+      then:
+        - if:
+            condition:
+              - switch.is_on: call_for_heat
+            then:
+              - switch.turn_off: stove_relay
+              - switch.turn_on: boiler_relay
+            else:
+              - switch.turn_off: relay1
+              - switch.turn_off: relay4
+              - switch.turn_off: stove_relay
+              - switch.turn_off: boiler_relay
+
+  - platform: gpio
+    name: "Nest Downstairs"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 0
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone1
+    on_release:
+      then:
+        - switch.turn_off: zone1
+        
+  - platform: gpio
+    name: "Nest Upstairs"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 1
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone2
+    on_release:
+      then:
+        - switch.turn_off: zone2
+       
+  - platform: gpio
+    name: "Nest Top Floor"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 2
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone3
+    on_release:
+      then:
+        - switch.turn_off: zone3
+       
+  - platform: gpio
+    name: "Downstairs Radiator Valve"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 4
+      mode: INPUT
+      inverted: true
+  - platform: gpio
+    name: "Upstairs Radiator Valve"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 5
+      mode: INPUT
+      inverted: true
+  - platform: gpio
+    name: "Top Floor Radiator Valve"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 6
+      mode: INPUT
+      inverted: true
+  - platform: gpio
+    name: "Hot Water Valve"
+    pin:
+      pcf8574: pcf8574_hub_input
+      number: 3
+      mode: INPUT
+      inverted: true
