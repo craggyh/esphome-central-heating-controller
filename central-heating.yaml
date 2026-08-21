@@ -18,7 +18,7 @@ esphome:
           id(burner_state_cached) = id(boiler_relay).state;
 
           // Pretend the last burner change happened long ago,
-          // so min-off/min-on timers do not block recovery after reboot
+          // so min-off/min-on timers do not block recovery after reboot.
           id(burner_last_change_ms) = millis() - 3600000UL;
 
           id(stove_mode_active) = id(stove_boiler_stat).state;
@@ -28,7 +28,7 @@ esphome:
             id(stove_start_ms) = 0;
           }
 
-      # Restore zones from live Nest inputs
+      # Restore zones from live Nest inputs.
       - if:
           condition:
             binary_sensor.is_on: nest_downstairs
@@ -80,7 +80,7 @@ ota:
 #  password: !secret wifi_password
 #  reboot_timeout:
 #    seconds: 0
-  # use_address: 10.10.50.xxx
+#  use_address: 10.10.50.xxx
 
 ethernet:
   type: W5500
@@ -179,6 +179,17 @@ number:
     max_value: 20
     step: 1
 
+  - platform: template
+    name: "Valve Open Timeout"
+    id: valve_open_timeout_s
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    initial_value: 25
+    min_value: 10
+    max_value: 60
+    step: 1
+
 text_sensor:
   - platform: template
     name: Central Heating Uptime
@@ -202,7 +213,7 @@ text_sensor:
         case ESP_RST_SDIO:      return {"SDIO"};
         default:                return {"Other"};
       }
-    
+
 globals:
   - id: stove_mode_active
     type: bool
@@ -244,6 +255,61 @@ globals:
     restore_value: no
     initial_value: "0"
 
+  - id: valve_z1_wait_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: valve_z2_wait_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: valve_z3_wait_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: valve_z4_wait_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: valve_z1_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: valve_z2_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: valve_z3_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: valve_z4_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: stove_dump_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: oil_return_sensor_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: hot_water_sensor_fault
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
 dallasng:
   - id: dallas_downstairs
     pin:
@@ -269,12 +335,51 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          const bool stove_active = id(stove_boiler_stat).state;
+          const uint32_t now = millis();
+          const uint32_t valve_timeout_ms =
+              (uint32_t)(id(valve_open_timeout_s).state * 1000.0f);
 
+          const bool stove_active = id(stove_boiler_stat).state;
           const bool any_demand =
               id(demand_z1) || id(demand_z2) || id(demand_z3) || id(demand_z4);
 
-          // Publish call-for-heat state
+          const bool oil_return_valid = !isnan(id(oil_boiler_return).state);
+          const bool hot_water_valid = !isnan(id(hot_water_temp).state);
+          const bool water_store_valid = !isnan(id(water_store_top_temp).state);
+
+          id(oil_return_sensor_fault) = !oil_return_valid;
+          id(hot_water_sensor_fault) = !hot_water_valid;
+
+          // Track valve opening timeouts independently so a failed valve is
+          // still reported when another demanded valve has opened successfully.
+          auto update_valve_fault = [&](bool commanded, bool open,
+                                        uint32_t &started, bool &fault) {
+            if (!commanded || open) {
+              started = 0;
+              fault = false;
+              return;
+            }
+
+            if (started == 0) {
+              started = now;
+              return;
+            }
+
+            if ((now - started) >= valve_timeout_ms) {
+              fault = true;
+            }
+          };
+
+          update_valve_fault(id(relay1).state, id(valve_z1_open).state,
+                             id(valve_z1_wait_ms), id(valve_z1_fault));
+          update_valve_fault(id(relay2).state, id(valve_z2_open).state,
+                             id(valve_z2_wait_ms), id(valve_z2_fault));
+          update_valve_fault(id(relay3).state, id(valve_z3_open).state,
+                             id(valve_z3_wait_ms), id(valve_z3_fault));
+          update_valve_fault(id(relay4).state, id(valve_z4_open).state,
+                             id(valve_z4_wait_ms), id(valve_z4_fault));
+
+          // Publish call-for-heat state.
           id(call_for_heat_sensor).publish_state(any_demand);
 
           // -------------------------------
@@ -283,15 +388,15 @@ interval:
           if (stove_active) {
             id(stove_mode_active) = true;
 
-            // Always inhibit oil boiler + oil pump
+            // A solid-fuel heat source has priority. Always inhibit oil boiler
+            // and oil pump while the stove stat is active.
             if (id(boiler_relay).state) id(boiler_relay).turn_off();
             if (id(oil_boiler_pump).state) id(oil_boiler_pump).turn_off();
 
-            // Ensure stove pump is ON
+            // Ensure stove circulation pump is ON.
             if (!id(stove_relay).state) id(stove_relay).turn_on();
 
-            // Anti-knock: keep valves shut for 15s from stove start
-            const uint32_t now = millis();
+            // Preserve the existing 15 second anti-knock startup period.
             const bool in_start_window =
                 (id(stove_start_ms) != 0) && ((now - id(stove_start_ms)) < 15000);
 
@@ -300,6 +405,7 @@ interval:
               if (id(relay2).state) id(relay2).turn_off();
               if (id(relay3).state) id(relay3).turn_off();
               if (id(relay4).state) id(relay4).turn_off();
+              id(stove_dump_fault) = false;
               return;
             }
 
@@ -308,17 +414,28 @@ interval:
             bool want_r3 = id(demand_z3);
             bool want_r4 = id(demand_z4);
 
-            bool any_demand_zone = want_r1 || want_r2 || want_r3 || want_r4;
+            const bool any_demand_zone = want_r1 || want_r2 || want_r3 || want_r4;
 
-            // If no demand at all, still need a dump path for stove heat
-            if (!any_demand_zone) {
+            // Once an emergency dump-path failure has been detected, keep all
+            // zones requested until stove mode ends. This prevents relays from
+            // oscillating between the preferred path and the emergency path.
+            if (id(stove_dump_fault)) {
+              want_r1 = true;
+              want_r2 = true;
+              want_r3 = true;
+              want_r4 = true;
+            } else if (!any_demand_zone) {
+              // If there is no thermostat/DHW demand, provide a dump path for
+              // unavoidable stove heat. Use the configurable stove limit for DHW.
               const bool hw_can_accept =
-                  (id(hot_water_temp).state <= 55.0f) && (id(water_store_top_temp).state <= 60.0f);
+                  hot_water_valid &&
+                  (id(hot_water_temp).state <= id(stove_max).state) &&
+                  (!water_store_valid || id(water_store_top_temp).state <= 60.0f);
 
               if (hw_can_accept) {
-                want_r4 = true;  // dump to HW
+                want_r4 = true;
               } else {
-                want_r1 = true;  // dump to Zone 1 by default
+                want_r1 = true;
               }
             }
 
@@ -327,17 +444,42 @@ interval:
             if (id(relay3).state != want_r3) { want_r3 ? id(relay3).turn_on() : id(relay3).turn_off(); }
             if (id(relay4).state != want_r4) { want_r4 ? id(relay4).turn_on() : id(relay4).turn_off(); }
 
+            const bool any_commanded_open =
+                (id(relay1).state && id(valve_z1_open).state) ||
+                (id(relay2).state && id(valve_z2_open).state) ||
+                (id(relay3).state && id(valve_z3_open).state) ||
+                (id(relay4).state && id(valve_z4_open).state);
+
+            const bool any_commanded_fault =
+                (id(relay1).state && id(valve_z1_fault)) ||
+                (id(relay2).state && id(valve_z2_fault)) ||
+                (id(relay3).state && id(valve_z3_fault)) ||
+                (id(relay4).state && id(valve_z4_fault));
+
+            // If the selected stove path fails to open, fail safe by requesting
+            // every available zone. A solid fuel heat source cannot simply be
+            // switched off, so obtaining a circulation path takes priority.
+            if (!any_commanded_open && any_commanded_fault) {
+              id(stove_dump_fault) = true;
+              if (!id(relay1).state) id(relay1).turn_on();
+              if (!id(relay2).state) id(relay2).turn_on();
+              if (!id(relay3).state) id(relay3).turn_on();
+              if (!id(relay4).state) id(relay4).turn_on();
+            }
+
             return;
           }
 
           // -------------------------------
-          // STOVE INACTIVE PATH
+          // STOVE INACTIVE / OIL PATH
           // -------------------------------
           id(stove_mode_active) = false;
           id(stove_start_ms) = 0;
+          id(stove_dump_fault) = false;
 
           if (id(stove_relay).state) id(stove_relay).turn_off();
 
+          // Command valves from logical demand.
           if (id(demand_z1)) { if (!id(relay1).state) id(relay1).turn_on(); } else { if (id(relay1).state) id(relay1).turn_off(); }
           if (id(demand_z2)) { if (!id(relay2).state) id(relay2).turn_on(); } else { if (id(relay2).state) id(relay2).turn_off(); }
           if (id(demand_z3)) { if (!id(relay3).state) id(relay3).turn_on(); } else { if (id(relay3).state) id(relay3).turn_off(); }
@@ -349,35 +491,56 @@ interval:
             return;
           }
 
-          if (!id(oil_boiler_pump).state) id(oil_boiler_pump).turn_on();
+          // The oil pump and burner are not permitted until at least one valve
+          // that is actually being requested has confirmed open.
+          const bool any_demanded_valve_open =
+              (id(demand_z1) && id(valve_z1_open).state) ||
+              (id(demand_z2) && id(valve_z2_open).state) ||
+              (id(demand_z3) && id(valve_z3_open).state) ||
+              (id(demand_z4) && id(valve_z4_open).state);
 
-          // Hot water priority
-          if (id(zone4).state && id(hot_water_temp).state < id(setpoint_max).state) {
-            if (!id(boiler_relay).state) id(boiler_relay).turn_on();
+          if (!any_demanded_valve_open) {
+            if (id(oil_boiler_pump).state) id(oil_boiler_pump).turn_off();
+            if (id(boiler_relay).state) id(boiler_relay).turn_off();
             return;
           }
 
-          const uint32_t now = millis();
-          const float RET = id(oil_boiler_return).state;
+          if (!id(oil_boiler_pump).state) id(oil_boiler_pump).turn_on();
+
+          // A missing oil return sensor is a burner lockout. Circulation remains
+          // available so residual heat can still be moved through an open zone.
+          if (!oil_return_valid) {
+            if (id(boiler_relay).state) id(boiler_relay).turn_off();
+            return;
+          }
 
           float off_th = id(oil_ret_off).state;
           float on_th  = id(oil_ret_on).state;
-
           if (on_th >= off_th) {
             on_th = off_th - 1.0f;
           }
 
-          const uint32_t MIN_ON_MS  = (uint32_t)(id(burner_min_on_min).state  * 60.0f * 1000.0f);
-          const uint32_t MIN_OFF_MS = (uint32_t)(id(burner_min_off_min).state * 60.0f * 1000.0f);
+          const uint32_t MIN_ON_MS =
+              (uint32_t)(id(burner_min_on_min).state * 60.0f * 1000.0f);
+          const uint32_t MIN_OFF_MS =
+              (uint32_t)(id(burner_min_off_min).state * 60.0f * 1000.0f);
+          const uint32_t since_change = now - id(burner_last_change_ms);
+          const bool burner_on = id(boiler_relay).state;
 
-          bool burner_on = id(boiler_relay).state;
+          // Hot water has thermal priority, but no longer bypasses burner
+          // minimum-off protection or sensor safety.
+          const bool dhw_priority =
+              id(demand_z4) && hot_water_valid &&
+              (id(hot_water_temp).state < id(setpoint_max).state);
 
-          if (burner_on != id(burner_state_cached)) {
-            id(burner_state_cached) = burner_on;
-            id(burner_last_change_ms) = now;
+          if (dhw_priority) {
+            if (!burner_on && since_change >= MIN_OFF_MS) {
+              id(boiler_relay).turn_on();
+            }
+            return;
           }
 
-          const uint32_t since_change = now - id(burner_last_change_ms);
+          const float RET = id(oil_boiler_return).state;
 
           if (burner_on) {
             if (since_change >= MIN_ON_MS && RET >= off_th) {
@@ -443,6 +606,16 @@ switch:
       number: 4
       mode: OUTPUT
       inverted: true
+    on_turn_on:
+      then:
+        - lambda: |-
+            id(burner_state_cached) = true;
+            id(burner_last_change_ms) = millis();
+    on_turn_off:
+      then:
+        - lambda: |-
+            id(burner_state_cached) = false;
+            id(burner_last_change_ms) = millis();
 
   - platform: gpio
     name: "Stove Boiler Relay"
@@ -531,8 +704,52 @@ binary_sensor:
     lambda: |-
       if (!id(call_for_heat_sensor).state) return false;
       if (id(stove_boiler_stat).state) return false;
-      if (id(zone4).state && id(hot_water_temp).state < id(setpoint_max).state) return false;
+      if (id(demand_z4) && !isnan(id(hot_water_temp).state) &&
+          id(hot_water_temp).state < id(setpoint_max).state) return false;
+      if (isnan(id(oil_boiler_return).state)) return false;
       return id(oil_boiler_return).state < 55.0;
+
+  - platform: template
+    name: "Oil Return Sensor Fault"
+    id: oil_return_sensor_fault_sensor
+    device_class: problem
+    lambda: 'return id(oil_return_sensor_fault);'
+
+  - platform: template
+    name: "Hot Water Sensor Fault"
+    id: hot_water_sensor_fault_sensor
+    device_class: problem
+    lambda: 'return id(hot_water_sensor_fault);'
+
+  - platform: template
+    name: "Zone 1 Valve Fault"
+    id: valve_z1_fault_sensor
+    device_class: problem
+    lambda: 'return id(valve_z1_fault);'
+
+  - platform: template
+    name: "Zone 2 Valve Fault"
+    id: valve_z2_fault_sensor
+    device_class: problem
+    lambda: 'return id(valve_z2_fault);'
+
+  - platform: template
+    name: "Zone 3 Valve Fault"
+    id: valve_z3_fault_sensor
+    device_class: problem
+    lambda: 'return id(valve_z3_fault);'
+
+  - platform: template
+    name: "Hot Water Valve Fault"
+    id: valve_z4_fault_sensor
+    device_class: problem
+    lambda: 'return id(valve_z4_fault);'
+
+  - platform: template
+    name: "Stove Dump Path Fault"
+    id: stove_dump_fault_sensor
+    device_class: problem
+    lambda: 'return id(stove_dump_fault);'
 
   # A8 V3 inputs 1-8 = PCF8575 pins 8-15
   - platform: gpio
@@ -603,35 +820,47 @@ binary_sensor:
 
   - platform: gpio
     name: "Downstairs Radiator Valve"
+    id: valve_z1_open
     pin:
       pcf8574: pcf8574_hub_main
       number: 12
       mode: INPUT
       inverted: true
+    filters:
+      - delayed_on_off: 150ms
 
   - platform: gpio
     name: "Upstairs Radiator Valve"
+    id: valve_z2_open
     pin:
       pcf8574: pcf8574_hub_main
       number: 13
       mode: INPUT
       inverted: true
+    filters:
+      - delayed_on_off: 150ms
 
   - platform: gpio
     name: "Top Floor Radiator Valve"
+    id: valve_z3_open
     pin:
       pcf8574: pcf8574_hub_main
       number: 14
       mode: INPUT
       inverted: true
+    filters:
+      - delayed_on_off: 150ms
 
   - platform: gpio
     name: "Hot Water Valve"
+    id: valve_z4_open
     pin:
       pcf8574: pcf8574_hub_main
       number: 11
       mode: INPUT
       inverted: true
+    filters:
+      - delayed_on_off: 150ms
 
 sensor:
   # Dallas temp sensors
@@ -788,20 +1017,21 @@ sensor:
       then:
         - if:
             condition:
-              lambda: 'return x < id(setpoint_min).state;'
+              lambda: 'return isnan(x);'
             then:
-              - switch.turn_on: zone4
+              # Do not leave a stale DHW demand latched if its sensor fails.
+              - switch.turn_off: zone4
             else:
               - if:
                   condition:
-                    lambda: 'return x > id(setpoint_max).state;'
+                    lambda: 'return x < id(setpoint_min).state;'
                   then:
+                    - switch.turn_on: zone4
+                  else:
                     - if:
                         condition:
-                          binary_sensor.is_on: stove_boiler_stat
+                          lambda: 'return x > id(setpoint_max).state;'
                         then:
-                          - switch.turn_on: zone1
-                          - delay: 5s
-                          - switch.turn_off: zone4
-                        else:
+                          # No synthetic Zone 1 demand is needed here. The main
+                          # stove controller chooses a safe dump path itself.
                           - switch.turn_off: zone4
