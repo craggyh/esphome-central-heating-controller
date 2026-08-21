@@ -1,0 +1,9 @@
+# Canonical ESPHome entry point for this project.
+#
+# The full hardware/entity definition remains in central-heating.yaml. The
+# historical control interval is removed and replaced by the hardened loop so
+# the same assembled configuration is used locally, remotely and in CI.
+packages:
+  base: !include central-heating.yaml
+  remove_legacy_interval: !include overrides/remove-legacy-interval.yaml
+  hardened_control_loop: !include overrides/hardened-control-loop.yaml

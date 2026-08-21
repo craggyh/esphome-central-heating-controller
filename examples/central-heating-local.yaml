@@ -1,0 +1,9 @@
+# Keep this small file in /config/esphome/ on Home Assistant / ESPHome.
+# The real controller configuration is pulled from GitHub.
+packages:
+  central_heating:
+    url: https://github.com/craggyh/esphome-central-heating-controller
+    files:
+      - controller.yaml
+    ref: main
+    refresh: 5min
