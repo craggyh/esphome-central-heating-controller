@@ -1,0 +1,8 @@
+# ESPHome secrets and generated files
+secrets.yaml
+.esphome/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
