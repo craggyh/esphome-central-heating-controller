@@ -12,7 +12,7 @@ The controller is built around a KinCony A8 V3 / ESP32-S3 and keeps the real-tim
 - W5500 Ethernet
 - PCF8575 I/O expander at `0x22`
 - eight relay outputs
-- DS18B20 temperature probes via the `dallasng` external component
+- DS18B20 temperature probes using ESPHome native `one_wire` / `dallas_temp`
 - thermostat/call-for-heat inputs
 - motorised-valve end-switch feedback inputs
 - Home Assistant API and ESPHome OTA
@@ -42,9 +42,11 @@ The controller:
 - waits for at least one demanded valve to physically prove open
 - only then permits the oil circulation pump and burner
 - locks the burner out if the oil-return temperature sensor is invalid
-- applies configurable return-temperature hysteresis
+- applies configurable condensing return-temperature hysteresis during space heating
 - applies configurable minimum burner ON and OFF times
 - gives domestic hot water thermal priority without bypassing safety interlocks
+
+The Home Assistant controls **Condensing Return - Burner ON** and **Condensing Return - Burner OFF** are efficiency controls for space heating, not boiler safety limits. Domestic-hot-water demand deliberately bypasses these condensing thresholds so the cylinder can reach its configured maximum temperature.
 
 Valve-open timeout faults and temperature-sensor faults are exposed to Home Assistant.
 
@@ -82,20 +84,29 @@ Domestic hot water has configurable minimum and maximum setpoints. The controlle
 
 If the hot-water temperature sensor becomes invalid, stale DHW demand is cleared rather than allowing an uncontrolled heating request to remain latched.
 
+## Temperature monitoring
+
+The controller uses ESPHome's native `one_wire` and `dallas_temp` components across four 1-Wire buses. DS18B20 probes monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water.
+
+The native implementation was real-device tested before being promoted to `main`. The previous DallasNG compatibility fork has been removed from the production configuration.
+
 ## Repository layout
 
 ```text
 central-heating.yaml                    Full hardware/entity base configuration
-controller.yaml                         Canonical assembled controller entry point
+controller.yaml                         Canonical assembled production entry point
 overrides/remove-legacy-interval.yaml   Removes the historical control interval
 overrides/hardened-control-loop.yaml    Current valve-aware control loop
+overrides/native-dallas-sensors.yaml    Native one_wire / dallas_temp definitions
+overrides/remove-dallasng-sensors.yaml  Removes legacy DallasNG definitions from the base
+overrides/condensing-control-names.yaml Clear Home Assistant names for condensing controls
 examples/central-heating-local.yaml     Small Home Assistant/ESPHome loader example
 .github/workflows/esphome.yml           Validation and full compile CI
 ```
 
 **`controller.yaml` on `main` is the canonical configuration to build and deploy.**
 
-`central-heating.yaml` remains the complete hardware/entity base, while the package overlays replace its historical 1-second controller with the hardened control loop.
+`central-heating.yaml` remains the hardware/entity base. Package overlays replace its historical control loop and legacy DallasNG definitions with the hardened controller and native ESPHome temperature stack.
 
 ## Use from the ESPHome dashboard
 
@@ -113,8 +124,6 @@ packages:
 
 The same example is stored in `examples/central-heating-local.yaml`.
 
-ESPHome clones remote packages locally and refreshes them according to `refresh`. Remote packages cannot contain active `!secret` lookups; any future private values should be passed from the small local YAML using substitutions.
-
 ## Building
 
 Validate and compile the assembled project with:
@@ -125,10 +134,6 @@ esphome compile controller.yaml
 ```
 
 GitHub Actions performs both commands automatically for pull requests and pushes to `main`, currently pinned to ESPHome 2026.8.0.
-
-## Temperature monitoring
-
-DS18B20 probes monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water. The configuration uses the external [`nrandell/dallasng`](https://github.com/nrandell/dallasng) component.
 
 ## Network and integration
 
