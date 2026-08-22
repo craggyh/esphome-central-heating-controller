@@ -7,3 +7,5 @@ packages:
   base: !include central-heating.yaml
   remove_legacy_interval: !include overrides/remove-legacy-interval.yaml
   hardened_control_loop: !include overrides/hardened-control-loop.yaml
+  remove_upstream_dallasng: !include overrides/remove-external-components.yaml
+  patched_dallasng: !include overrides/patched-dallasng.yaml
