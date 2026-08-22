@@ -1,9 +1,0 @@
-# Clarify that these thresholds are efficiency controls for space heating,
-# not boiler over-temperature safety limits. DHW priority intentionally
-# bypasses these thresholds so the cylinder can reach Hot Water Max.
-number:
-  - id: !extend oil_ret_off
-    name: "Condensing Return - Burner OFF"
-
-  - id: !extend oil_ret_on
-    name: "Condensing Return - Burner ON"
