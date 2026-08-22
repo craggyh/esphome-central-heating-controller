@@ -1,0 +1,11 @@
+# Temporary parser shim only.
+#
+# central-heating.yaml still contains legacy DallasNG declarations which are
+# removed by the following package overlay. Register the local component so
+# ESPHome can parse that base configuration. Production temperature sensors are
+# recreated with native one_wire/dallas_temp and do not use DallasNG.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [dallasng]
