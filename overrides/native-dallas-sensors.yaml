@@ -1,0 +1,182 @@
+one_wire:
+  - platform: gpio
+    id: one_wire_downstairs
+    pin: GPIO40
+
+  - platform: gpio
+    id: one_wire_upstairs
+    pin: GPIO14
+
+  - platform: gpio
+    id: one_wire_boiler
+    pin: GPIO48
+
+  - platform: gpio
+    id: one_wire_stove
+    pin: GPIO13
+
+sensor:
+  - platform: dallas_temp
+    one_wire_id: one_wire_stove
+    address: 0xFC021841334CFF28
+    name: "Stove Boiler Temp"
+    id: stove_boiler_temp
+    resolution: 10
+    update_interval: 15s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_stove
+    address: 0x2701191eea752428
+    name: "Stove Boiler Return"
+    id: stove_boiler_return
+    resolution: 10
+    update_interval: 15s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_boiler
+    address: 0x770114550f43aa28
+    name: "Zone 1 Flow"
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
+    address: 0xfc00000d9ec23d28
+    name: "Zone 2 Flow"
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_boiler
+    address: 0xEE0114551F81AA28
+    name: "Oil Boiler Return"
+    id: oil_boiler_return
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_downstairs
+    address: 0xbb0114552356aa28
+    name: "Oil Boiler Flow"
+    id: oil_boiler_flow
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_downstairs
+    address: 0x880114551897aa28
+    name: "Zone 1 Return"
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
+    address: 0x6400000d9d8a7b28
+    name: "Zone 2 Return"
+    resolution: 10
+    update_interval: 30s
+
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
+    address: 0xbd00000d9ea69328
+    name: "Hot Water Temp"
+    id: hot_water_temp
+    resolution: 10
+    update_interval: 30s
+
+  - platform: homeassistant
+    name: "Water Store Top Temp"
+    entity_id: sensor.solar_panels_water_store_top_temp
+    id: water_store_top_temp
+
+  - platform: template
+    id: oil_boiler_delta
+    name: Oil Boiler Delta
+    unit_of_measurement: °C
+    update_interval: 30s
+    lambda: return id(oil_boiler_flow).state - id(oil_boiler_return).state;
+
+  - platform: template
+    id: stove_boiler_delta
+    name: Stove Boiler Delta
+    unit_of_measurement: °C
+    update_interval: 30s
+    lambda: return id(stove_boiler_temp).state - id(stove_boiler_return).state;
+
+  - platform: template
+    id: pressure_psi
+    name: Central Heating Pressure Psi
+    unit_of_measurement: Psi
+    update_interval: 30s
+    lambda: return id(pressure).state;
+
+  - platform: template
+    id: pressure_bar
+    name: Central Heating Pressure Bar
+    unit_of_measurement: Bar
+    update_interval: 30s
+    filters:
+      - multiply: 0.0689
+    lambda: return id(pressure).state;
+
+  - platform: uptime
+    name: Uptime Sensor
+    id: uptime_sensor
+    update_interval: 60s
+    internal: true
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: central_heating_uptime
+            state: !lambda |-
+              int seconds = (int) round(id(uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds %= (24 * 3600);
+              int hours = seconds / 3600;
+              seconds %= 3600;
+              int minutes = seconds / 60;
+              seconds %= 60;
+
+              std::string s;
+              if (days)    s += std::to_string(days) + "d ";
+              if (hours)   s += std::to_string(hours) + "h ";
+              if (minutes) s += std::to_string(minutes) + "m ";
+              s += std::to_string(seconds) + "s";
+              return s;
+
+  - platform: adc
+    pin: GPIO7
+    id: pressure
+    name: Central Heating Pressure
+    update_interval: 30s
+    accuracy_decimals: 2
+    attenuation: 11db
+    filters:
+      - calibrate_linear:
+          - 0.46 -> 0.0
+          - 2.5 -> 76
+
+  - platform: template
+    name: hot_water_automation
+    internal: true
+    lambda: 'return id(hot_water_temp).state;'
+    update_interval: 10s
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return isnan(x);'
+            then:
+              - switch.turn_off: zone4
+            else:
+              - if:
+                  condition:
+                    lambda: 'return x < id(setpoint_min).state;'
+                  then:
+                    - switch.turn_on: zone4
+                  else:
+                    - if:
+                        condition:
+                          lambda: 'return x > id(setpoint_max).state;'
+                        then:
+                          - switch.turn_off: zone4
