@@ -1,0 +1,5 @@
+# Native Dallas test overlay: remove the DallasNG bus and the complete sensor
+# section inherited from the base. A following package recreates the sensor
+# section using ESPHome's native one_wire/dallas_temp implementation.
+dallasng: !remove
+sensor: !remove
