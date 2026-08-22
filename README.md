@@ -86,9 +86,9 @@ If the hot-water temperature sensor becomes invalid, stale DHW demand is cleared
 
 ## Temperature monitoring
 
-The controller uses ESPHome's native `one_wire` and `dallas_temp` components across four 1-Wire buses. DS18B20 probes monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water.
+The production controller uses ESPHome's native `one_wire` and `dallas_temp` components across four 1-Wire buses. DS18B20 probes monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water.
 
-The native implementation was real-device tested before being promoted to `main`. The previous DallasNG compatibility fork has been removed from the production configuration.
+The native implementation was real-device tested before being promoted to `main`. A small vendored DallasNG parser shim remains temporarily because the legacy `central-heating.yaml` base still contains DallasNG declarations that are removed during package assembly; it is not used by the production temperature sensors. A future base-file refactor can remove that shim entirely.
 
 ## Repository layout
 
@@ -100,6 +100,7 @@ overrides/hardened-control-loop.yaml    Current valve-aware control loop
 overrides/native-dallas-sensors.yaml    Native one_wire / dallas_temp definitions
 overrides/remove-dallasng-sensors.yaml  Removes legacy DallasNG definitions from the base
 overrides/condensing-control-names.yaml Clear Home Assistant names for condensing controls
+components/dallasng/                    Temporary parser shim for the legacy base
 examples/central-heating-local.yaml     Small Home Assistant/ESPHome loader example
 .github/workflows/esphome.yml           Validation and full compile CI
 ```
