@@ -9,5 +9,6 @@ packages:
   hardened_control_loop: !include overrides/hardened-control-loop.yaml
   condensing_control_names: !include overrides/condensing-control-names.yaml
   remove_upstream_dallasng: !include overrides/remove-external-components.yaml
+  legacy_dallasng_parser: !include overrides/legacy-dallasng-parser.yaml
   remove_dallasng_sensors: !include overrides/remove-dallasng-sensors.yaml
   native_dallas_sensors: !include overrides/native-dallas-sensors.yaml
