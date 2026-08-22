@@ -5,7 +5,10 @@ on:
   push:
     branches:
       - main
-      - test/native-dallas
+
+concurrency:
+  group: esphome-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -25,8 +28,8 @@ jobs:
       - name: Install ESPHome
         run: pip install "esphome==2026.8.0"
 
-      - name: Validate native Dallas controller configuration
-        run: esphome config controller-native-dallas.yaml
+      - name: Validate assembled controller configuration
+        run: esphome config controller.yaml
 
-      - name: Compile native Dallas firmware
-        run: esphome compile controller-native-dallas.yaml
+      - name: Compile firmware
+        run: esphome compile controller.yaml

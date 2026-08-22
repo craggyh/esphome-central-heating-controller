@@ -63,9 +63,6 @@ psram:
   mode: octal
 #  speed: 80MHz
 
-external_components:
-  - source: github://nrandell/dallasng
-
 logger:
   baud_rate: 0
 
@@ -136,7 +133,7 @@ number:
     step: 1
 
   - platform: template
-    name: "Oil Return Protect OFF Threshold"
+    name: "Condensing Return - Burner OFF"
     id: oil_ret_off
     unit_of_measurement: "°C"
     optimistic: true
@@ -147,7 +144,7 @@ number:
     step: 0.5
 
   - platform: template
-    name: "Oil Return Protect ON Threshold"
+    name: "Condensing Return - Burner ON"
     id: oil_ret_on
     unit_of_measurement: "°C"
     optimistic: true
@@ -310,26 +307,22 @@ globals:
     restore_value: no
     initial_value: "false"
 
-dallasng:
-  - id: dallas_downstairs
-    pin:
-      number: GPIO40
-    update_interval: 30s
+one_wire:
+  - platform: gpio
+    id: one_wire_downstairs
+    pin: GPIO40
 
-  - id: dallas_upstairs
-    pin:
-      number: GPIO14
-    update_interval: 30s
+  - platform: gpio
+    id: one_wire_upstairs
+    pin: GPIO14
 
-  - id: dallas_boiler
-    pin:
-      number: GPIO48
-    update_interval: 30s
+  - platform: gpio
+    id: one_wire_boiler
+    pin: GPIO48
 
-  - id: dallas_stove
-    pin:
-      number: GPIO13
-    update_interval: 15s
+  - platform: gpio
+    id: one_wire_stove
+    pin: GPIO13
 
 interval:
   - interval: 1s
@@ -863,65 +856,74 @@ binary_sensor:
       - delayed_on_off: 150ms
 
 sensor:
-  # Dallas temp sensors
-  - platform: dallasng
+  # DS18B20 temperature sensors (ESPHome native one_wire / dallas_temp)
+  - platform: dallas_temp
+    one_wire_id: one_wire_stove
     address: 0xFC021841334CFF28
     name: "Stove Boiler Temp"
-    dallasng_id: dallas_stove
     id: stove_boiler_temp
     resolution: 10
+    update_interval: 15s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_stove
     address: 0x2701191eea752428
     name: "Stove Boiler Return"
-    dallasng_id: dallas_stove
     id: stove_boiler_return
     resolution: 10
+    update_interval: 15s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_boiler
     address: 0x770114550f43aa28
     name: "Zone 1 Flow"
-    dallasng_id: dallas_boiler
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
     address: 0xfc00000d9ec23d28
     name: "Zone 2 Flow"
-    dallasng_id: dallas_upstairs
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_boiler
     address: 0xEE0114551F81AA28
     name: "Oil Boiler Return"
     id: oil_boiler_return
-    dallasng_id: dallas_boiler
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_downstairs
     address: 0xbb0114552356aa28
     name: "Oil Boiler Flow"
     id: oil_boiler_flow
-    dallasng_id: dallas_downstairs
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_downstairs
     address: 0x880114551897aa28
     name: "Zone 1 Return"
-    dallasng_id: dallas_downstairs
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
     address: 0x6400000d9d8a7b28
     name: "Zone 2 Return"
-    dallasng_id: dallas_upstairs
     resolution: 10
+    update_interval: 30s
 
-  - platform: dallasng
+  - platform: dallas_temp
+    one_wire_id: one_wire_upstairs
     address: 0xbd00000d9ea69328
     name: "Hot Water Temp"
-    dallasng_id: dallas_upstairs
     id: hot_water_temp
     resolution: 10
+    update_interval: 30s
 
   - platform: homeassistant
     name: "Water Store Top Temp"

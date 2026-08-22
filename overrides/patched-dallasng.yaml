@@ -1,4 +1,0 @@
-external_components:
-  - source: github://craggyh/esphome-central-heating-controller@fix/dallasng-2026-8-compat
-    components: [dallasng]
-    refresh: 5min
