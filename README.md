@@ -34,84 +34,46 @@ The four logical zone switches set demand flags. The central control loop decide
 
 ## Oil boiler control
 
-When the stove is inactive, the oil system uses valve feedback and return-temperature control.
+When the stove is inactive, the controller commands the required motorised valves and waits for at least one demanded valve to physically prove open before permitting the oil circulation pump or burner. A failed oil-return temperature sensor locks the burner out while leaving circulation available through an open zone.
 
-The controller:
-
-- commands the required motorised valve(s)
-- waits for at least one demanded valve to physically prove open
-- only then permits the oil circulation pump and burner
-- locks the burner out if the oil-return temperature sensor is invalid
-- applies configurable condensing return-temperature hysteresis during space heating
-- applies configurable minimum burner ON and OFF times
-- gives domestic hot water thermal priority without bypassing safety interlocks
-
-The Home Assistant controls **Condensing Return - Burner ON** and **Condensing Return - Burner OFF** are efficiency controls for space heating, not boiler safety limits. Domestic-hot-water demand deliberately bypasses these condensing thresholds so the cylinder can reach its configured maximum temperature.
+Space heating uses configurable return-temperature hysteresis through **Condensing Return - Burner ON** and **Condensing Return - Burner OFF**, together with configurable minimum burner ON/OFF times. These are efficiency controls, not boiler safety limits. Domestic-hot-water demand deliberately bypasses the condensing thresholds so the cylinder can reach its configured maximum temperature while still respecting valve, sensor and burner anti-cycle interlocks.
 
 Valve-open timeout faults and temperature-sensor faults are exposed to Home Assistant.
 
 ## Solid-fuel stove control
 
-The stove has priority whenever its boiler stat is active. The oil burner and oil circulation pump are inhibited immediately.
+The stove takes priority whenever its boiler stat is active, immediately inhibiting the oil burner and oil circulation pump.
 
-Stove startup is **valve first, pump second**:
+Stove startup is **valve first, pump second**: the controller selects the demanded heating path (or a safe heat-dump path), commands the valve, waits for physical open feedback, and then starts the stove circulation pump. The former 15-second all-valves-closed startup delay has been removed.
 
-1. determine the currently demanded heating path, or choose a safe heat-dump path if there is no demand
-2. command the required valve(s)
-3. wait for a commanded valve to physically prove open
-4. start the stove circulation pump
+If a commanded stove heat path does not prove open before the configurable timeout, the controller enters a latched emergency dump mode: all zone valves are requested, a Home Assistant fault is raised, and the stove pump starts immediately. With no normal demand, domestic hot water is preferred as a heat sink while it can accept heat; otherwise Zone 1 is the normal fallback.
 
-The old 15-second all-valves-closed startup delay has been removed.
+## Heating zones and hot water
 
-If a commanded stove heat path does not prove open before the configurable valve timeout, the controller enters a latched emergency dump mode: all zone valves are requested, a fault is exposed to Home Assistant, and the stove circulation pump is started immediately. The fault remains latched until stove mode ends.
+The controller provides downstairs, upstairs, top-floor and domestic-hot-water zones. The three space-heating demands are restored from their live thermostat inputs after boot.
 
-With no normal demand, the controller prefers domestic hot water as the heat sink while the cylinder/store can accept heat; otherwise Zone 1 is used as the normal fallback dump path.
-
-## Heating zones
-
-The controller provides:
-
-1. Zone 1 — downstairs heating
-2. Zone 2 — upstairs heating
-3. Zone 3 — top-floor heating
-4. Zone 4 — domestic hot water
-
-The three space-heating demands are restored from their live thermostat inputs after boot.
-
-## Hot water
-
-Domestic hot water has configurable minimum and maximum setpoints. The controller also reads the top temperature of the solar-heated water store from Home Assistant for stove heat-dump decisions.
-
-If the hot-water temperature sensor becomes invalid, stale DHW demand is cleared rather than allowing an uncontrolled heating request to remain latched.
+DHW has configurable minimum and maximum setpoints. The controller also reads the top temperature of the solar-heated water store from Home Assistant for stove heat-dump decisions. If the DHW sensor becomes invalid, stale DHW demand is cleared rather than being left latched.
 
 ## Temperature monitoring
 
-The production controller uses ESPHome's native `one_wire` and `dallas_temp` components across four 1-Wire buses. DS18B20 probes monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water.
-
-The native implementation was real-device tested before being promoted to `main`. A small vendored DallasNG parser shim remains temporarily because the legacy `central-heating.yaml` base still contains DallasNG declarations that are removed during package assembly; it is not used by the production temperature sensors. A future base-file refactor can remove that shim entirely.
+Four native ESPHome 1-Wire buses use `one_wire` and `dallas_temp` to monitor stove flow/return, oil-boiler flow/return, heating-zone flow/return and domestic hot water. The native implementation was real-device tested before being promoted to production; the previous DallasNG external component and compatibility fork are no longer required.
 
 ## Repository layout
 
 ```text
-central-heating.yaml                    Full hardware/entity base configuration
+central-heating.yaml                    Hardware/entities and native Dallas sensors
 controller.yaml                         Canonical assembled production entry point
-overrides/remove-legacy-interval.yaml   Removes the historical control interval
+overrides/remove-legacy-interval.yaml   Removes the superseded control interval
 overrides/hardened-control-loop.yaml    Current valve-aware control loop
-overrides/native-dallas-sensors.yaml    Native one_wire / dallas_temp definitions
-overrides/remove-dallasng-sensors.yaml  Removes legacy DallasNG definitions from the base
-overrides/condensing-control-names.yaml Clear Home Assistant names for condensing controls
-components/dallasng/                    Temporary parser shim for the legacy base
-examples/central-heating-local.yaml     Small Home Assistant/ESPHome loader example
+examples/central-heating-local.yaml     ESPHome dashboard loader example
 .github/workflows/esphome.yml           Validation and full compile CI
 ```
 
 **`controller.yaml` on `main` is the canonical configuration to build and deploy.**
 
-`central-heating.yaml` remains the hardware/entity base. Package overlays replace its historical control loop and legacy DallasNG definitions with the hardened controller and native ESPHome temperature stack.
-
 ## Use from the ESPHome dashboard
 
-Instead of maintaining a second full copy under `/config/esphome`, keep only a small loader such as:
+Keep only a small local loader rather than a second full copy:
 
 ```yaml
 packages:
@@ -127,25 +89,19 @@ The same example is stored in `examples/central-heating-local.yaml`.
 
 ## Building
 
-Validate and compile the assembled project with:
-
 ```bash
 esphome config controller.yaml
 esphome compile controller.yaml
 ```
 
-GitHub Actions performs both commands automatically for pull requests and pushes to `main`, currently pinned to ESPHome 2026.8.0.
+GitHub Actions runs both commands for pull requests and pushes to `main`, currently pinned to ESPHome 2026.8.0.
 
-## Network and integration
+## Network and safety
 
-The controller uses W5500 Ethernet. ESPHome provides the native Home Assistant API, OTA updates, uptime reporting and ESP32 reset-reason reporting. API reboot timeout is disabled so loss of Home Assistant does not reboot the heating controller.
+The controller uses W5500 Ethernet, Home Assistant's native ESPHome API and OTA updates. API reboot timeout is disabled so loss of Home Assistant does not reboot the heating controller.
 
-## Safety
-
-This project controls pumps, motorised heating zones, an oil burner and a solid-fuel heat source. ESPHome should not be the sole safety mechanism for either appliance.
-
-Independent boiler thermostats, over-temperature cut-outs, pressure protection, correctly designed gravity/dump protection where required, and manufacturer-specified electrical/mechanical safety controls must remain in place.
+This project controls pumps, motorised valves, an oil burner and a solid-fuel heat source. ESPHome must not be the sole safety mechanism. Independent boiler thermostats, over-temperature cut-outs, pressure protection, correctly designed gravity/dump protection where required, and manufacturer-specified safety controls must remain in place.
 
 ## Development workflow
 
-Changes are made on Git branches and reviewed through pull requests. The CI workflow validates and compiles the exact assembled `controller.yaml` before changes are published to `main`.
+Changes are developed on Git branches and reviewed through pull requests. CI validates and compiles the exact assembled `controller.yaml` before changes are published to `main`.
