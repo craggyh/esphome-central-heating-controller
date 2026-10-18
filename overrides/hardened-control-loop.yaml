@@ -6,7 +6,22 @@ interval:
           const uint32_t valve_timeout_ms =
               (uint32_t)(id(valve_open_timeout_s).state * 1000.0f);
 
-          const bool stove_active = id(stove_boiler_stat).state;
+          // Secondary heat-removal trigger when the stove stat input fails.
+          // DS18B20 updates every 15s; expire readings older than 45s.
+          const float stove_temp = id(stove_boiler_temp).state;
+          const bool stove_temp_valid =
+              id(stove_boiler_temp).has_state() &&
+              !isnan(stove_temp) && isfinite(stove_temp) &&
+              stove_temp >= -20.0f && stove_temp <= 125.0f &&
+              (now - id(stove_temp_last_seen_ms)) < 45000UL;
+          if (stove_temp_valid) {
+            if (stove_temp >= 70.0f) id(stove_temp_backup_active) = true;
+            else if (stove_temp <= 65.0f) id(stove_temp_backup_active) = false;
+          }
+          // A stale reading cannot assert a new backup, but don't cancel
+          // an already-running heat dump merely because the sensor failed.
+          const bool stove_active =
+              id(stove_boiler_stat).state || id(stove_temp_backup_active);
           const bool any_demand =
               id(demand_z1) || id(demand_z2) || id(demand_z3) || id(demand_z4);
 
