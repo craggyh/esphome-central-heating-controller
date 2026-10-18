@@ -217,6 +217,16 @@ globals:
     restore_value: no
     initial_value: "false"
 
+  - id: stove_temp_backup_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: stove_temp_last_seen_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
   - id: burner_last_change_ms
     type: uint32_t
     restore_value: no
@@ -739,6 +749,12 @@ binary_sensor:
     lambda: 'return id(valve_z4_fault);'
 
   - platform: template
+    name: "Stove Temperature Backup Active"
+    id: stove_temp_backup_sensor
+    device_class: problem
+    lambda: 'return id(stove_temp_backup_active);'
+
+  - platform: template
     name: "Stove Dump Path Fault"
     id: stove_dump_fault_sensor
     device_class: problem
@@ -862,6 +878,9 @@ sensor:
     address: 0xFC021841334CFF28
     name: "Stove Boiler Temp"
     id: stove_boiler_temp
+    on_value:
+      then:
+        - lambda: 'id(stove_temp_last_seen_ms) = millis();'
     resolution: 10
     update_interval: 15s
 
