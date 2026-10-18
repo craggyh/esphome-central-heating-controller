@@ -11,7 +11,7 @@ interval:
           const float stove_temp = id(stove_boiler_temp).state;
           const bool stove_temp_valid =
               id(stove_boiler_temp).has_state() &&
-              !isnan(stove_temp) && isfinite(stove_temp) &&
+              !isnan(stove_temp) && std::isfinite(stove_temp) &&
               stove_temp >= -20.0f && stove_temp <= 125.0f &&
               (now - id(stove_temp_last_seen_ms)) < 45000UL;
           if (stove_temp_valid) {
