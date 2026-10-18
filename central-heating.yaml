@@ -865,8 +865,8 @@ binary_sensor:
       number: 15
       mode: INPUT
       inverted: true
-    filters:
-      - delayed_on_off: 150ms
+#    filters:
+  #    - delayed_on_off: 150ms
     id: stove_boiler_stat
     on_press:
       then:
