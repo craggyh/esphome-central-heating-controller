@@ -761,6 +761,103 @@ binary_sensor:
     lambda: 'return id(stove_dump_fault);'
 
   # A8 V3 inputs 1-8 = PCF8575 pins 8-15
+## DI1 P18
+  - platform: gpio
+    name: "Nest Downstairs"
+    id: nest_downstairs
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 8
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone1
+    on_release:
+      then:
+        - switch.turn_off: zone1
+
+## DI2 P9
+  - platform: gpio
+    name: "Nest Upstairs"
+    id: nest_upstairs
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 9
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone2
+    on_release:
+      then:
+        - switch.turn_off: zone2
+
+## DI3 P10
+  - platform: gpio
+    name: "Nest Top Floor"
+    id: nest_top_floor
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 10
+      mode: INPUT
+      inverted: true
+    on_press:
+      then:
+        - switch.turn_on: zone3
+    on_release:
+      then:
+        - switch.turn_off: zone3
+
+## DI4 P11
+  - platform: gpio
+    name: "Hot Water Valve"
+    id: valve_z4_open
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 11
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 150ms
+
+## DI5 P12
+  - platform: gpio
+    name: "Downstairs Radiator Valve"
+    id: valve_z1_open
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 12
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 150ms
+
+## DI6 P13
+  - platform: gpio
+    name: "Upstairs Radiator Valve"
+    id: valve_z2_open
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 13
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 150ms
+
+## DI7 P14
+  - platform: gpio
+    name: "Top Floor Radiator Valve"
+    id: valve_z3_open
+    pin:
+      pcf8574: pcf8574_hub_main
+      number: 14
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 150ms
+
+## DI8 P15
   - platform: gpio
     name: "Stove Stat"
     pin:
@@ -782,94 +879,6 @@ binary_sensor:
             id(stove_mode_active) = false;
             id(stove_start_ms) = 0;
 
-  - platform: gpio
-    name: "Nest Downstairs"
-    id: nest_downstairs
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 8
-      mode: INPUT
-      inverted: true
-    on_press:
-      then:
-        - switch.turn_on: zone1
-    on_release:
-      then:
-        - switch.turn_off: zone1
-
-  - platform: gpio
-    name: "Nest Upstairs"
-    id: nest_upstairs
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 9
-      mode: INPUT
-      inverted: true
-    on_press:
-      then:
-        - switch.turn_on: zone2
-    on_release:
-      then:
-        - switch.turn_off: zone2
-
-  - platform: gpio
-    name: "Nest Top Floor"
-    id: nest_top_floor
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 10
-      mode: INPUT
-      inverted: true
-    on_press:
-      then:
-        - switch.turn_on: zone3
-    on_release:
-      then:
-        - switch.turn_off: zone3
-
-  - platform: gpio
-    name: "Downstairs Radiator Valve"
-    id: valve_z1_open
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 12
-      mode: INPUT
-      inverted: true
-    filters:
-      - delayed_on_off: 150ms
-
-  - platform: gpio
-    name: "Upstairs Radiator Valve"
-    id: valve_z2_open
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 13
-      mode: INPUT
-      inverted: true
-    filters:
-      - delayed_on_off: 150ms
-
-  - platform: gpio
-    name: "Top Floor Radiator Valve"
-    id: valve_z3_open
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 14
-      mode: INPUT
-      inverted: true
-    filters:
-      - delayed_on_off: 150ms
-
-  - platform: gpio
-    name: "Hot Water Valve"
-    id: valve_z4_open
-    pin:
-      pcf8574: pcf8574_hub_main
-      number: 11
-      mode: INPUT
-      inverted: true
-    filters:
-      - delayed_on_off: 150ms
 
 sensor:
   # DS18B20 temperature sensors (ESPHome native one_wire / dallas_temp)
