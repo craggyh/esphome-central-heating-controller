@@ -767,7 +767,7 @@ binary_sensor:
       pcf8574: pcf8574_hub_main
       number: 15
       mode: INPUT
-      inverted: false
+      inverted: true
     filters:
       - delayed_on_off: 150ms
     id: stove_boiler_stat
