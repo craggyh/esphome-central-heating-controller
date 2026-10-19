@@ -3,6 +3,8 @@ interval:
     then:
       - lambda: |-
           const uint32_t now = millis();
+          static bool stove_diag_was_active = false;
+          static uint32_t stove_diag_started_ms = 0;
           const uint32_t valve_timeout_ms =
               (uint32_t)(id(valve_open_timeout_s).state * 1000.0f);
 
@@ -119,6 +121,24 @@ interval:
                 (want_r3 && id(valve_z3_fault)) ||
                 (want_r4 && id(valve_z4_fault));
 
+            // Diagnostic only: sample commands and feedback once per second
+            // during the first 20 seconds of each stove activation.
+            if (!stove_diag_was_active) stove_diag_started_ms = now;
+            stove_diag_was_active = true;
+            if ((now - stove_diag_started_ms) < 20000UL) {
+              ESP_LOGI("stove_startup",
+                       "demand=%d%d%d%d want=%d%d%d%d relay=%d%d%d%d open=%d%d%d%d pump=%d dump=%d fault=%d",
+                       (int) id(demand_z1), (int) id(demand_z2),
+                       (int) id(demand_z3), (int) id(demand_z4),
+                       (int) want_r1, (int) want_r2, (int) want_r3, (int) want_r4,
+                       (int) id(relay1).state, (int) id(relay2).state,
+                       (int) id(relay3).state, (int) id(relay4).state,
+                       (int) id(valve_z1_open).state, (int) id(valve_z2_open).state,
+                       (int) id(valve_z3_open).state, (int) id(valve_z4_open).state,
+                       (int) id(stove_relay).state, (int) id(stove_dump_fault),
+                       (int) any_commanded_fault);
+            }
+
             if (id(stove_dump_fault)) {
               // A solid-fuel heat source cannot be stopped on demand. Once a
               // valve timeout has forced emergency mode, circulate immediately
@@ -155,6 +175,7 @@ interval:
           // ------------------------------------------------------------
           // STOVE INACTIVE / OIL PATH
           // ------------------------------------------------------------
+          stove_diag_was_active = false;
           id(stove_mode_active) = false;
           id(stove_start_ms) = 0;
           id(stove_dump_fault) = false;
