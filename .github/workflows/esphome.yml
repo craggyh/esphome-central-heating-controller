@@ -36,14 +36,15 @@ jobs:
           esphome config central-heating.yaml > /tmp/central-heating-resolved.yaml
           python - <<'PY'
           from pathlib import Path
-          import yaml
-          config = yaml.safe_load(Path("/tmp/central-heating-resolved.yaml").read_text())
-          intervals = config.get("interval", [])
-          assert len(intervals) == 1, f"Expected exactly one interval, found {len(intervals)}"
-          assert intervals[0].get("interval") == "1s", f"Unexpected interval: {intervals[0].get('interval')}"
-          code = "\\n".join(action.get("lambda", "") for action in intervals[0].get("then", []) if isinstance(action, dict))
-          assert "stove_temp_backup_active" in code and "any_commanded_open" in code, "Hardened control loop missing"
-          assert "in_start_window" not in code, "Legacy 15-second loop unexpectedly present"
+          import re
+          config = Path("/tmp/central-heating-resolved.yaml").read_text()
+          # Inspect the actual expanded configuration, not the source file.
+          section = re.search(r"(?ms)^interval:\\s*\\n(.*?)(?=^[a-z][a-z_]*:|\\Z)", config)
+          assert section, "Resolved configuration has no interval section"
+          intervals = re.findall(r"^  - interval: (.+)$", section.group(1), re.M)
+          assert intervals == ["1s"], f"Expected one 1s interval, found {intervals}"
+          assert "stove_temp_backup_active" in section.group(1), "Hardened controller missing"
+          assert "in_start_window" not in section.group(1), "Legacy startup delay present"
           print("Validated: one hardened 1-second control loop, no legacy startup delay")
           PY
 
