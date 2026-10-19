@@ -28,8 +28,24 @@ jobs:
       - name: Install ESPHome
         run: pip install "esphome==2026.8.0"
 
-      - name: Validate assembled controller configuration
-        run: esphome config controller.yaml
+      - name: Validate single-file controller configuration
+        run: esphome config central-heating.yaml
+
+      - name: Assert exactly one control interval in resolved ESPHome configuration
+        run: |
+          esphome config central-heating.yaml > /tmp/central-heating-resolved.yaml
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          config = yaml.safe_load(Path("/tmp/central-heating-resolved.yaml").read_text())
+          intervals = config.get("interval", [])
+          assert len(intervals) == 1, f"Expected exactly one interval, found {len(intervals)}"
+          assert intervals[0].get("interval") == "1s", f"Unexpected interval: {intervals[0].get('interval')}"
+          code = "\\n".join(action.get("lambda", "") for action in intervals[0].get("then", []) if isinstance(action, dict))
+          assert "stove_temp_backup_active" in code and "any_commanded_open" in code, "Hardened control loop missing"
+          assert "in_start_window" not in code, "Legacy 15-second loop unexpectedly present"
+          print("Validated: one hardened 1-second control loop, no legacy startup delay")
+          PY
 
       - name: Compile firmware
-        run: esphome compile controller.yaml
+        run: esphome compile central-heating.yaml
