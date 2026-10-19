@@ -39,7 +39,7 @@ jobs:
           import re
           config = Path("/tmp/central-heating-resolved.yaml").read_text()
           # Inspect the actual expanded configuration, not the source file.
-          section = re.search(r"(?ms)^interval:\\s*\\n(.*?)(?=^[a-z][a-z_]*:|\\Z)", config)
+          section = re.search(r"(?ms)^interval:\s*\n(.*?)(?=^[a-z][a-z_]*:|\Z)", config)
           assert section, "Resolved configuration has no interval section"
           intervals = re.findall(r"^  - interval: (.+)$", section.group(1), re.M)
           assert intervals == ["1s"], f"Expected one 1s interval, found {intervals}"
