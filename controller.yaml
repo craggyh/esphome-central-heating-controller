@@ -1,9 +1,0 @@
-# Canonical ESPHome entry point for this project.
-#
-# central-heating.yaml contains the hardware/entities and native Dallas sensors.
-# The historical control interval is removed and replaced with the hardened,
-# valve-aware control loop.
-packages:
-  base: !include central-heating.yaml
-  remove_legacy_interval: !include overrides/remove-legacy-interval.yaml
-  hardened_control_loop: !include overrides/hardened-control-loop.yaml
