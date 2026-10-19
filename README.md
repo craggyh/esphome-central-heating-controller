@@ -61,15 +61,12 @@ Four native ESPHome 1-Wire buses use `one_wire` and `dallas_temp` to monitor sto
 ## Repository layout
 
 ```text
-central-heating.yaml                    Hardware/entities and native Dallas sensors
-controller.yaml                         Canonical assembled production entry point
-overrides/remove-legacy-interval.yaml   Removes the superseded control interval
-overrides/hardened-control-loop.yaml    Current valve-aware control loop
+central-heating.yaml                    Single authoritative controller configuration
 examples/central-heating-local.yaml     ESPHome dashboard loader example
-.github/workflows/esphome.yml           Validation and full compile CI
+.github/workflows/esphome.yml           Validation, single-loop assertion and compile CI
 ```
 
-**`controller.yaml` on `main` is the canonical configuration to build and deploy.**
+**`central-heating.yaml` on `main` is the only configuration to build and deploy.**
 
 ## Use from the ESPHome dashboard
 
@@ -80,7 +77,7 @@ packages:
   central_heating:
     url: https://github.com/craggyh/esphome-central-heating-controller
     files:
-      - controller.yaml
+      - central-heating.yaml
     ref: main
     refresh: 5min
 ```
@@ -90,11 +87,11 @@ The same example is stored in `examples/central-heating-local.yaml`.
 ## Building
 
 ```bash
-esphome config controller.yaml
-esphome compile controller.yaml
+esphome config central-heating.yaml
+esphome compile central-heating.yaml
 ```
 
-GitHub Actions runs both commands for pull requests and pushes to `main`, currently pinned to ESPHome 2026.8.0.
+GitHub Actions runs both commands for pull requests and pushes to `main`, currently pinned to ESPHome 2026.8.0. CI also checks the resolved configuration has exactly one heating control interval..
 
 ## Network and safety
 
@@ -104,4 +101,4 @@ This project controls pumps, motorised valves, an oil burner and a solid-fuel he
 
 ## Development workflow
 
-Changes are developed on Git branches and reviewed through pull requests. CI validates and compiles the exact assembled `controller.yaml` before changes are published to `main`.
+Changes are developed on Git branches and reviewed through pull requests. CI validates and compiles the exact assembled `central-heating.yaml` before changes are published to `main`.
