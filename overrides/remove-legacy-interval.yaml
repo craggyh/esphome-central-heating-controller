@@ -1,3 +1,0 @@
-# The full hardware configuration in central-heating.yaml contains the historical
-# 1-second control loop. Remove it before loading the hardened replacement.
-interval: !remove
