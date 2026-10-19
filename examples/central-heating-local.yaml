@@ -4,6 +4,6 @@ packages:
   central_heating:
     url: https://github.com/craggyh/esphome-central-heating-controller
     files:
-      - controller.yaml
+      - central-heating.yaml
     ref: main
     refresh: 5min
